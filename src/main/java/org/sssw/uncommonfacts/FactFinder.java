@@ -21,12 +21,15 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
@@ -46,17 +49,18 @@ public class FactFinder {
     private String userAgent;
 
     /**
-     * The page search query that will be performed using the Wikipedia OpenSearch APIs.
-     * Protocol, languages and the page queries need to be appended before and
-     * after this string.
+     * The page search query that will be performed using the Wikipedia
+     * OpenSearch APIs. Protocol, languages and the page queries need to be
+     * appended before and after this string.
      */
     private final String singlePageQuery = "wikipedia.org/w/api.php?action=query&prop=categories|extracts|links&clshow=!hidden&format=json&pllimit=500&plnamespace=0&titles=";
 
-    private final String categoryQuery = "https://en.wikipedia.org/w/api.php?action=query&list=categorymembers&cmlimit=max&format=json&rawcontinue=&cmtitle=Category:";
-    
+    private final String categoryQuery = "wikipedia.org/w/api.php?action=query&list=categorymembers&cmlimit=max&format=json&rawcontinue=&cmtitle=Category:";
+
     // Blacklist of unwanted terms
     private static final List<String> blackTerms = Arrays.asList(new String[]{"null", "International Standard Book Number",
         "Digital object identifier",
+        "Living people",
         "PubMed Identifier",
         "International Standard Serial Number",
         "Wikisource",
@@ -76,6 +80,11 @@ public class FactFinder {
      */
     private Map<String, Integer> links
             = new HashMap<>();
+    
+    /**
+     * The page we're analyzing.
+     */
+    private String InputPage;
 
     /**
      * Set the user agent used for requests to Wikipedia.
@@ -91,43 +100,59 @@ public class FactFinder {
      *
      * @param grams the grams to analyze.
      */
-    public void findUncommonFacts(String page) {
-       
-        scrapInputPage(page);
+    public void findUncommonFacts(String inputPage) {
         
-        System.out.println("*** Wikipedia page: " + page);
-        
+        this.InputPage = inputPage;
+
+        scrapInputPage();
+
+        System.out.println("*** Wikipedia page: " + InputPage);
+
         System.out.println();
         System.out.println("Found " + links.size() + " outgoing links");
         System.out.println("Found " + categories.size() + " categories");
-        
-        for (String cat : categories.keySet())
+
+        for (String cat : categories.keySet()) {
             System.out.print(cat + ";");
-        
+        }
+
         System.out.println();
+
+        int counter = 1 ;
         
-        for (String cat: categories.keySet()) {
+        for (String cat : categories.keySet()) {
+            System.out.println("Analyzing category " + counter++ + "...");
             findFactsInCategory(cat);
         }
         
         
+        List<Map.Entry<String, Integer>> ordered
+                = links.entrySet().stream().sorted(Map.Entry.comparingByValue())
+                        //.limit(20)
+                        .collect(Collectors.toList());
+        
+        System.out.println("*** Suggestions ***");
+        
+        for (Map.Entry<String,Integer> entry : ordered) {
+            System.out.println("" + entry.getKey() + " \t\t\t Score: " + entry.getValue());
+        }
+
     } // void findUncommonFacts
 
     /**
-     * Lines 1-3 of the algorithm: init the table with the outgoing links
-     * (and find the categories).
-     * 
-     * @param page 
+     * Lines 1-3 of the algorithm: init the table with the outgoing links (and
+     * find the categories).
      */
-    private void scrapInputPage(String page) {
+    private void scrapInputPage() {
+
         HttpURLConnection con = null;
         BufferedReader reader = null;
 
-        page = page.replaceAll(" ", "_");
+        InputPage = InputPage.replaceAll(" ", "_");
 
         // do the query and save the retrieved json in an object.
         String queryAddress = String.format("https://%s.%s%s",
-                Locale.ENGLISH, singlePageQuery, page);
+                Locale.ENGLISH, singlePageQuery, InputPage);
 
         try {
 
@@ -138,7 +163,7 @@ public class FactFinder {
             Object json = (new JSONParser()).parse(reader);
             // closing connection
             con.disconnect();
-                // The retrieved JSON is something like:
+            // The retrieved JSON is something like:
             //
             // "query": {
             //        "pages": {
@@ -190,7 +215,7 @@ public class FactFinder {
 
                 String pageId = (String) it.next();
                 JSONObject block = (JSONObject) idBlock.get(pageId);
-                
+
                 // iterate through categories
                 JSONArray jsonCats = (JSONArray) block.get("categories");
                 if (jsonCats != null) {
@@ -202,10 +227,11 @@ public class FactFinder {
                         catName = catName.replaceFirst("Categoria:", "");
                         if (!catName.toLowerCase().contains("stub")
                                 && !catName.contains("Featured Articles")
-                                && !catName.toLowerCase().contains("disambiguation")) {                          
-                            
+                                && !catName.toLowerCase().contains("disambiguation")) {
+
                             if (!this.categories.containsKey(catName) && !blackTerms.contains(catName)) {
-                                this.categories.put(catName,0);
+                                if (!catName.contains("births") && (!catName.contains("deaths")))
+                                    this.categories.put(catName, 0);
                             }
                         }
                     }
@@ -216,11 +242,11 @@ public class FactFinder {
                 //          <h2>See also</h2>\n<ul>
                 // and ends with:
                 //          </ul>
-                    // To retrieve these links, we don't need to scrap HTML.
+                // To retrieve these links, we don't need to scrap HTML.
                 // We can just read the list of links included in the JSON
                 // the drawback of this approach is that some pages have huge
                 // amounts of links and many of them are uninteresting
-                    // For example, almost any page has a reference to the
+                // For example, almost any page has a reference to the
                 // definition of ISBN (contained in the references)
                 // or of some other kind of wide-used identifier such as:
                 // Pub-Med index,
@@ -234,8 +260,9 @@ public class FactFinder {
                         JSONObject link = (iterator.next());
                         String linkname = (String) link.get("title");
 
-                        if (!this.links.containsKey(linkname) && !blackTerms.contains(linkname)) {
-                            this.links.put(linkname,0);
+                        if (!this.links.containsKey(linkname) && 
+                                !blackTerms.contains(linkname)) {
+                            this.links.put(linkname, 0);
                         }
 
                     }
@@ -244,7 +271,143 @@ public class FactFinder {
 
         } catch (ParseException ex) {
             throw new RuntimeException(
-                    "Error while parsing JSON by Wikipedia for page: " + page, ex);
+                    "Error while parsing JSON by Wikipedia for page: " + InputPage, ex);
+        } catch (MalformedURLException ex) {
+            throw new RuntimeException(
+                    "Malformed Wikipedia URL: " + queryAddress, ex);
+        } catch (IOException ex) {
+            throw new RuntimeException(
+                    "Error while reading Wikipedia", ex);
+        } finally {
+            try {
+                if (reader != null) {
+                    reader.close();
+                }
+            } catch (IOException ex) {
+                throw new RuntimeException(
+                        "Error while closing Wikipedia stream", ex);
+            }
+        }
+
+    }
+
+    private void findFactsInCategory(String cat) {
+
+        HttpURLConnection con = null;
+        BufferedReader reader = null;
+
+        cat = cat.replaceAll(" ", "_");
+
+        // do the query and save the retrieved json in an object.
+        String queryAddress = String.format("https://%s.%s%s",
+                Locale.ENGLISH, categoryQuery, cat);
+
+        try {
+
+            con = (HttpURLConnection) (new URL(queryAddress)).openConnection();
+            con.setRequestProperty("User-Agent", userAgent);
+            con.setRequestMethod("GET");
+            reader = new BufferedReader(new InputStreamReader(con.getInputStream()));
+            Object json = (new JSONParser()).parse(reader);
+            // closing connection
+            con.disconnect();
+
+            JSONObject queryblock = (JSONObject) json;
+            JSONObject mainBlock = (JSONObject) queryblock.get("query");
+            JSONArray categoriesBlock = (JSONArray) mainBlock.get("categorymembers");
+
+            Iterator<JSONObject> iterator = categoriesBlock.iterator();
+            
+            System.out.println("This category has " + categoriesBlock.size() + " pages");
+            
+            int counter = 0;
+            
+            while (iterator.hasNext()) {
+                
+                System.out.println("Page " + counter++);
+                
+                JSONObject singleCategoryBlock = (iterator.next());
+                String pageName = (String) singleCategoryBlock.get("title");
+                pageName = pageName.replace(" ", "_");
+                
+                
+                
+                if (!pageName.equals(InputPage))
+                    findFactsInPage(pageName);
+            }
+
+        } catch (ParseException ex) {
+            throw new RuntimeException(
+                    "Error while parsing JSON by Wikipedia for page: " + cat, ex);
+        } catch (MalformedURLException ex) {
+            throw new RuntimeException(
+                    "Malformed Wikipedia URL: " + queryAddress, ex);
+        } catch (IOException ex) {
+            throw new RuntimeException(
+                    "Error while reading Wikipedia", ex);
+        } finally {
+            try {
+                if (reader != null) {
+                    reader.close();
+                }
+            } catch (IOException ex) {
+                throw new RuntimeException(
+                        "Error while closing Wikipedia stream", ex);
+            }
+        }
+
+    }
+
+    private void findFactsInPage(String pageName) {
+        
+        HttpURLConnection con = null;
+        BufferedReader reader = null;
+        
+        pageName = pageName.replaceAll(" ", "_");
+
+        // do the query and save the retrieved json in an object.
+        String queryAddress = String.format("https://%s.%s%s",
+                Locale.ENGLISH, singlePageQuery, pageName);
+
+        try {
+
+            con = (HttpURLConnection) (new URL(queryAddress)).openConnection();
+            con.setRequestProperty("User-Agent", userAgent);
+            con.setRequestMethod("GET");
+            reader = new BufferedReader(new InputStreamReader(con.getInputStream()));
+            Object json = (new JSONParser()).parse(reader);
+            // closing connection
+            con.disconnect();
+        
+            JSONObject queryblock = (JSONObject) json;
+            JSONObject pagesBlock = (JSONObject) queryblock.get("query");
+            JSONObject idBlock = (JSONObject) pagesBlock.get("pages");
+
+            // if we pipe'd more than one title, we'll have more than one pageId entry
+            for (Iterator it = idBlock.keySet().iterator(); it.hasNext();) {
+
+                String pageId = (String) it.next();
+                JSONObject block = (JSONObject) idBlock.get(pageId);
+                
+                JSONArray jsonLinks = (JSONArray) block.get("links");
+                if (jsonLinks != null) {
+                    Iterator<JSONObject> iterator = jsonLinks.iterator();
+                    while (iterator.hasNext()) {
+                        JSONObject link = (iterator.next());
+                        String linkName = (String) link.get("title");
+
+                        if (this.links.containsKey(linkName)) {
+                            int newValue = links.get(linkName) + 1;
+                            links.replace(linkName, newValue);
+                        }
+
+                    }
+                }
+            }
+
+        } catch (ParseException ex) {
+            throw new RuntimeException(
+                    "Error while parsing JSON by Wikipedia for page: " + pageName, ex);
         } catch (MalformedURLException ex) {
             throw new RuntimeException(
                     "Malformed Wikipedia URL: " + queryAddress, ex);
@@ -263,10 +426,6 @@ public class FactFinder {
         }
 
         
-    }
-
-    private void findFactsInCategory(String cat) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
     }
 
 } // class
