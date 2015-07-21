@@ -1,4 +1,4 @@
-package org.sssw.uncommonfacts;
+package org.sssw.relrel;
 
 /*
  * Licensed under the Apache License, Version 2.0 (the "License");
