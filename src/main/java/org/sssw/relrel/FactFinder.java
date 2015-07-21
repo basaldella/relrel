@@ -333,7 +333,7 @@ public class FactFinder {
                 // For further information, please check
                 // https://en.wikipedia.org/wiki/Wikipedia:Namespace
                 
-                int pageNamespace = (Integer) singleCategoryBlock.get("ns");
+                long pageNamespace = (Long) singleCategoryBlock.get("ns");
                 
                 if (!pageName.equals(InputPage) && pageNamespace == 0)
                     findFactsInPage(pageName);
