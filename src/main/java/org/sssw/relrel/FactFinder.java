@@ -326,9 +326,16 @@ public class FactFinder {
                 String pageName = (String) singleCategoryBlock.get("title");
                 pageName = pageName.replace(" ", "_");
                 
+                // Please be aware that the categories JSON returns not only
+                // pages, but also (sub) categories and other things we don't want.
+                // So, keep only the pages and skip the rest.
                 
+                // For further information, please check
+                // https://en.wikipedia.org/wiki/Wikipedia:Namespace
                 
-                if (!pageName.equals(InputPage))
+                int pageNamespace = (Integer) singleCategoryBlock.get("ns");
+                
+                if (!pageName.equals(InputPage) && pageNamespace == 0)
                     findFactsInPage(pageName);
             }
 
