@@ -1,7 +1,17 @@
-# uncommonfacts
+# RELated entities - RELoaded
 
-Winner or the Mini challenge @SSSW 2015 ( http://sssw.org ). Topic: finding related entities which are not similar to the input one. 
+This project is the follow-up of the [winning project](https://github.com/basaldella/uncommonfacts) of the [SSSW 2015](http://sssw.org) summer school. Our goal is, given an input Wikipedia page, to find *interesting curiosities* into the page.
 
-Usage: download the code, open it in Netbeans or import it Eclipse or your favorite IDE as Maven project. Edit Starter.java with the Wikipedia page you want to analyze. Run and wait for the results - it may take a while!
+## Status
 
-A report with the description of the approach will be soon published in the arXiv.
+We're currently working to evolve our toy example into a proper research project. Next goals are:
+
+1. Improve the algorithm to get
+2. Include a PageRank algorithm to obtain better results
+3. Provide a decent output instead of the current stdout output
+4. Build a proper evaluation environment
+5. Evaluate the results
+
+## License
+
+All the code is licensed under the Apache License, version 2.0.
